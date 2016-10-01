@@ -9,11 +9,51 @@
 namespace VW
 {
     /// <summary>
-    /// Enables multi-threaded prediction by utilizing a pool of <see cref="VowpalWabbit"/> instances.  
+    /// Enables multi-threaded prediction by utilizing a pool of <see cref="VowpalWabbit"/> instances.
+    /// </summary>
+    public sealed class VowpalWabbitThreadedPrediction : VowpalWabbitThreadedPredictionBase<VowpalWabbit>
+    {
+        /// <summary>
+        /// Initializes a new instance of <see cref="VowpalWabbitThreadedPrediction"/>.
+        /// </summary>
+        /// <remarks>Decision Service client library needs default constructor.</remarks>
+        public VowpalWabbitThreadedPrediction()
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="VowpalWabbitThreadedPrediction"/>.
+        /// </summary>
+        /// <param name="model">The model used by each pool instance.</param>
+        public VowpalWabbitThreadedPrediction(VowpalWabbitModel model)
+            : base(model)
+        {
+        }
+
+        /// <summary>
+        /// Returns the same instance as no wrapping is required.
+        /// </summary>
+        /// <param name="vw">The wrapped vw instance.</param>
+        protected override VowpalWabbit InternalCreate(VowpalWabbit vw)
+        {
+            return vw;
+        }
+    }
+
+    /// <summary>
+    /// Enables multi-threaded prediction by utilizing a pool of <see cref="VowpalWabbit"/> instances.
     /// </summary>
     /// <typeparam name="TExample">The type use for providing data to VW using the serializer infrastructure.</typeparam>
-    public class VowpalWabbitThreadedPrediction<TExample> : VowpalWabbitThreadedPredictionBase<VowpalWabbit<TExample>>
+    public sealed class VowpalWabbitThreadedPrediction<TExample> : VowpalWabbitThreadedPredictionBase<VowpalWabbit<TExample>>
     {
+        /// <summary>
+        /// Initializes a new instance of <see cref="VowpalWabbitThreadedPrediction"/>.
+        /// </summary>
+        /// <remarks>Decision Service client library needs default constructor.</remarks>
+        public VowpalWabbitThreadedPrediction()
+        {
+        }
+
         /// <summary>
         /// Initializes a new instance of <see cref="VowpalWabbitThreadedPrediction{TExample}"/>.
         /// </summary>
@@ -27,19 +67,27 @@ namespace VW
         /// Creates a new instance of <see cref="VowpalWabbit{TExample}"/>.
         /// </summary>
         /// <param name="vw">The wrapped vw instance.</param>
-        sealed protected override VowpalWabbit<TExample> InternalCreate(VowpalWabbit vw)
+        protected override VowpalWabbit<TExample> InternalCreate(VowpalWabbit vw = null)
         {
             return new VowpalWabbit<TExample>(vw);
         }
     }
 
     /// <summary>
-    /// Enables multi-threaded prediction by utilizing a pool of <see cref="VowpalWabbit"/> instances.  
+    /// Enables multi-threaded prediction by utilizing a pool of <see cref="VowpalWabbit"/> instances.
     /// </summary>
     /// <typeparam name="TExample">The type use for providing data to VW using the serializer infrastructure.</typeparam>
     /// <typeparam name="TActionDependentFeature">The type use for providing action dependent data to VW using the serializer infrastructure.</typeparam>
-    public class VowpalWabbitThreadedPrediction<TExample, TActionDependentFeature> : VowpalWabbitThreadedPredictionBase<VowpalWabbit<TExample, TActionDependentFeature>>
+    public sealed class VowpalWabbitThreadedPrediction<TExample, TActionDependentFeature> : VowpalWabbitThreadedPredictionBase<VowpalWabbit<TExample, TActionDependentFeature>>
     {
+        /// <summary>
+        /// Initializes a new instance of <see cref="VowpalWabbitThreadedPrediction"/>.
+        /// </summary>
+        /// <remarks>Decision Service client library needs default constructor.</remarks>
+        public VowpalWabbitThreadedPrediction()
+        {
+        }
+
         /// <summary>
         /// Initializes a new instance of <see cref="VowpalWabbitThreadedPrediction{TExample,TActionDependentFeature}"/>.
         /// </summary>
@@ -53,7 +101,7 @@ namespace VW
         /// Creates a new instance of <see cref="VowpalWabbit{TExample}"/>.
         /// </summary>
         /// <param name="vw">The wrapped vw instance.</param>
-        sealed protected override VowpalWabbit<TExample, TActionDependentFeature> InternalCreate(VowpalWabbit vw)
+        protected override VowpalWabbit<TExample, TActionDependentFeature> InternalCreate(VowpalWabbit vw)
         {
             return new VowpalWabbit<TExample, TActionDependentFeature>(vw);
         }

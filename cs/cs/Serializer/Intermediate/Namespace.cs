@@ -17,7 +17,7 @@ namespace VW.Serializer.Intermediate
     public sealed class Namespace
     {
         /// <summary>
-        /// Initializes a new namespace instance.
+        /// Initializes a new <see cref="Namespace"/> instance.
         /// </summary>
         /// <param name="vw">VopwpalWabbit instance used for hashing.</param>
         /// <param name="name">The namespace name.</param>
@@ -25,7 +25,7 @@ namespace VW.Serializer.Intermediate
         public Namespace(VowpalWabbit vw, string name, char? featureGroup)
         {
             this.Name = name;
-            this.FeatureGroup = featureGroup ?? ' ';
+            this.FeatureGroup = featureGroup ?? VowpalWabbitConstants.DefaultNamespace;
 
             if (featureGroup == null && !string.IsNullOrWhiteSpace(name))
             {
@@ -37,11 +37,33 @@ namespace VW.Serializer.Intermediate
                 vw.HashSpace(this.FeatureGroup.ToString()) :
                 vw.HashSpace(this.FeatureGroup + this.Name);
 
-            this.NamespaceString = string.Format(
-                CultureInfo.InvariantCulture,
-                " |{0}{1}",
-                this.FeatureGroup,
-                this.Name);
+            if (vw.Settings.EnableStringExampleGeneration)
+                this.NamespaceString = string.Format(
+                    CultureInfo.InvariantCulture,
+                    " |{0}{1}",
+                    this.FeatureGroup,
+                    this.Name);
+        }
+
+        /// <summary>
+        /// Initializes a new <see cref="Namespace"/> instance.
+        /// </summary>
+        /// <param name="vw">VopwpalWabbit instance used for hashing.</param>
+        /// <param name="name">The namespace name. First character is treated as feature group. Defaults to space.</param>
+        public Namespace(VowpalWabbit vw, string name = null)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                name = VowpalWabbitConstants.DefaultNamespace.ToString();
+
+            if (name.Length > 1)
+                this.Name = name.Substring(1);
+
+            this.FeatureGroup = name[0];
+
+            this.NamespaceHash = vw.HashSpace(name);
+
+            if (vw.Settings.EnableStringExampleGeneration)
+                this.NamespaceString = " |" + name;
         }
 
         /// <summary>
@@ -57,7 +79,7 @@ namespace VW.Serializer.Intermediate
         /// <summary>
         /// The pre-calculated hash.
         /// </summary>
-        public uint NamespaceHash { get; private set; }
+        public ulong NamespaceHash { get; private set; }
 
         /// <summary>
         /// The string representation of the namespace.

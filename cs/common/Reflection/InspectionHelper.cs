@@ -13,8 +13,16 @@ using System.Linq;
 
 namespace VW.Reflection
 {
+    /// <summary>
+    /// Utilitiy class supporting feature type inspection.
+    /// </summary>
     public static class InspectionHelper
     {
+        /// <summary>
+        /// Determines if the <paramref name="elemType"/> is a supported numeric type.
+        /// </summary>
+        /// <param name="elemType">The type to be inspected.</param>
+        /// <returns>True if numeric, false otherwise.</returns>
         public static bool IsNumericType(Type elemType)
         {
             return IsNumericTypeInternal(elemType) ||
@@ -40,33 +48,25 @@ namespace VW.Reflection
                     || elemType == typeof(Int64);
         }
 
-        public static Type GetDenseFeatureValueElementType(Type type)
+        /// <summary>
+        /// If <paramref name="type"/> is an enumerable type (such as array or <see cref="IEnumerable{T}"/>), this method will 
+        /// return the element type.
+        /// </summary>
+        /// <param name="type">The type to be inspected.</param>
+        /// <returns>If <paramref name="type"/> is an enumerable type the element type is returned, otherwise null.</returns>
+        public static Type GetEnumerableElementType(Type type)
         {
             Contract.Requires(type != null);
 
             if (type.IsArray)
-            {
-                var elemType = type.GetElementType();
+                return type.GetElementType();
 
-                // numeric types
-                if (IsNumericType(elemType))
-                {
-                    return elemType;
-                }
-            }
+            var enumerableType = type.GetInterfaces().Union(new[] { type })
+                    .FirstOrDefault(it => it.IsGenericType && it.GetGenericTypeDefinition() == typeof(IEnumerable<>));
 
-            if (typeof(IEnumerable<object>).IsAssignableFrom(type))
-            {
-                // let's get T of IEnumerable<T>
-                var elemType = type.GetInterfaces().Union(new[] { type })
-                    .First(it => it.IsGenericType && it.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-                    .GetGenericArguments()[0];
-
-                if (IsNumericType(elemType))
-                {
-                    return elemType;
-                }
-            }
+            // let's get T of IEnumerable<T>
+            if (enumerableType != null)
+                return enumerableType.GetGenericArguments()[0];
 
             return null;
         }

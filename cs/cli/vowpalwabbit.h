@@ -15,18 +15,19 @@ license as described in the file LICENSE.
 namespace VW
 {
     ref class VowpalWabbitExampleBuilder;
+	ref struct VowpalWabbitFeature;
 
     /// <summary>
     /// Simple string example based wrapper for vowpal wabbit.
     /// </summary>
     /// <remarks>If possible use VowpalWabbit{T} types as this wrapper suffers from marshalling performance wise.</remarks>
-    public ref class VowpalWabbit : VowpalWabbitBase
+    public ref class VowpalWabbit : VowpalWabbitBase, IVowpalWabbitExamplePool
     {
     private:
         /// <summary>
         /// Select the right hash method based on args.
         /// </summary>
-        Func<String^, unsigned long, size_t>^ GetHasher();
+        Func<String^, size_t, size_t>^ GetHasher();
 
         /// <summary>
         /// The selected hasher method.
@@ -34,7 +35,7 @@ namespace VW
         /// <remarks>
         /// Avoiding if-else for hash function selection. Delegates outperform function pointers according to http://stackoverflow.com/questions/13443250/performance-of-c-cli-function-pointers-versus-net-delegates
         /// </remarks>
-        initonly Func<String^, unsigned long, size_t>^ m_hasher;
+        initonly Func<String^, size_t, size_t>^ m_hasher;
 
     public:
         /// <summary>
@@ -53,24 +54,6 @@ namespace VW
         /// Run multi-passe training.
         /// </summary>
         void RunMultiPass();
-
-        /// <summary>
-        /// Persist model to file specified by -i.
-        /// </summary>
-        void SaveModel();
-
-        /// <summary>
-        /// Persist model to <paramref name="filename"/>.
-        /// </summary>
-        /// <param name="filename">The destination filename for the model.</param>
-        void SaveModel(String^ filename);
-
-        /// <summary>
-        /// Persist model to <paramref name="stream"/>.
-        /// </summary>
-        /// <param name="stream">The destination stream for the model.</param>
-        /// <remarks>The stream is not closed to support embedded schemes.</remarks>
-        void SaveModel(Stream^ stream);
 
         /// <summary>
         /// Gets Collected performance statistics.
@@ -94,7 +77,7 @@ namespace VW
         /// <param name="s">String to be hashed.</param>
         /// <returns>The resulting hash code.</returns>
         /// <remarks>The hash code depends on the vowpal wabbit instance as different has functions can be configured.</remarks>
-        uint32_t HashSpaceNative(String^ s);
+        uint64_t HashSpaceNative(String^ s);
 
         /// <summary>
         /// Hashes the given namespace <paramref name="s"/>.
@@ -102,7 +85,7 @@ namespace VW
         /// <param name="s">String to be hashed.</param>
         /// <returns>The resulting hash code.</returns>
         /// <remarks>The hash code depends on the vowpal wabbit instance as different has functions can be configured.</remarks>
-        uint32_t HashSpace(String^ s);
+        uint64_t HashSpace(String^ s);
 
         /// <summary>
         /// Hash the given feature <paramref name="s"/>.
@@ -111,7 +94,7 @@ namespace VW
         /// <param name="u">Hash offset.</param>
         /// <returns>The resulting hash code.</returns>
         /// <remarks>The hash code depends on the vowpal wabbit instance as different has functions can be configured.</remarks>
-        uint32_t HashFeatureNative(String^ s, unsigned long u);
+        uint64_t HashFeatureNative(String^ s, size_t u);
 
         /// <summary>
         /// Hash the given feature <paramref name="s"/>.
@@ -120,7 +103,17 @@ namespace VW
         /// <param name="u">Hash offset.</param>
         /// <returns>The resulting hash code.</returns>
         /// <remarks>The hash code depends on the vowpal wabbit instance as different has functions can be configured.</remarks>
-        uint32_t HashFeature(String^ s, unsigned long u);
+        uint64_t HashFeature(String^ s, size_t u);
+
+		/// <summary>
+		/// Return full topic allocation [topic, feature].
+		/// </summary>
+		cli::array<cli::array<float>^>^ GetTopicAllocation();
+
+		/// <summary>
+		/// Return the <paramref name="top"/> topic weights.
+		/// </summary>
+		cli::array<System::Collections::Generic::List<VowpalWabbitFeature^>^>^ GetTopicAllocation(int top);
 
         /// <summary>
         /// The associated <see cref="VowpalWabbitBase"/> instance learns from this example and returns the prediction result for this example.
@@ -219,5 +212,22 @@ namespace VW
         /// Invokes the driver.
         /// </summary>
         void Driver();
+
+        virtual property VowpalWabbit^ Native
+        {
+          virtual VowpalWabbit^ get() sealed;
+        }
+
+        /// <summary>
+        /// Gets or creates a native example from a CLR maintained, but natively allocated pool.
+        /// </summary>
+        /// <returns>A ready to use cleared native example data structure.</returns>
+        virtual VowpalWabbitExample^ GetOrCreateNativeExample() sealed;
+
+        /// <summary>
+        /// Puts a native example data structure back into the pool.
+        /// </summary>
+        /// <param name="example">The example to be returned.</param>
+        virtual void ReturnExampleToPool(VowpalWabbitExample^ example) sealed;
     };
 }

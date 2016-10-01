@@ -10,24 +10,22 @@ license as described in the file LICENSE.
 #include "vw_base.h"
 #include "vw_example.h"
 #include "vowpalwabbit.h"
+#include "vw_label.h"
 
 namespace VW
 {
+    using namespace VW::Labels;
+
     /// <summary>
     /// Helper class to ease construction of native vowpal wabbit namespace data structure.
     /// </summary>
-    public ref class VowpalWabbitNamespaceBuilder
+    public ref class VowpalWabbitNamespaceBuilder sealed
     {
     private:
         /// <summary>
-        /// Sum of squares.
-        /// </summary>
-        float* m_sum_feat_sq;
-
-        /// <summary>
         /// Features.
         /// </summary>
-        v_array<feature>* m_atomic;
+        features* m_features;
 
         /// <summary>
         /// The namespace index.
@@ -47,11 +45,10 @@ namespace VW
         /// <summary>
         /// Initializes a new <see cref="VowpalWabbitNamespaceBuilder"/> instance.
         /// </summary>
-        /// <param name="sum_feat_sq">Pointer into sum squares array owned by <see cref="VowpalWabbitExample"/>.</param>
-        /// <param name="atomic">Pointer into atomics owned by <see cref="VowpalWabbitExample"/>.</param>
+        /// <param name="features">Pointer into features owned by <see cref="VowpalWabbitExample"/>.</param>
         /// <param name="index">The namespace index.</param>
         /// <param name="example">The native example to build up.</param>
-        VowpalWabbitNamespaceBuilder(float* sum_feat_sq, v_array<feature>* atomic, unsigned char index, example* example);
+        VowpalWabbitNamespaceBuilder(features* features, unsigned char index, example* example);
 
     public:
         ~VowpalWabbitNamespaceBuilder();
@@ -61,7 +58,7 @@ namespace VW
         /// </summary>
         /// <param name="weight_index">The weight index.</param>
         /// <param name="x">The value.</param>
-        void AddFeature(uint32_t weight_index, float x);
+        void AddFeature(uint64_t weight_index, float x);
 
         /// <summary>
         /// Adds a dense array to the example.
@@ -69,22 +66,24 @@ namespace VW
         /// <param name="weight_index_base">The base weight index. Each element is then placed relative to this index.</param>
         /// <param name="begin">The start pointer of the float array.</param>
         /// <param name="end">The end pointer of the float array.</param>
-        void AddFeaturesUnchecked(uint32_t weight_index_base, float* begin, float* end);
+        void AddFeaturesUnchecked(uint64_t weight_index_base, float* begin, float* end);
 
         /// <summary>
         /// Pre-allocate features of <paramref name="size"/>.
         /// </summary>
         /// <param name="size">The number of features to pre-allocate.</param>
         void PreAllocate(int size);
+
+        property size_t FeatureCount { size_t get(); }
     };
 
     /// <summary>
     /// Helper class to ease construction of native vowpal wabbit example data structure.
     /// </summary>
-    public ref class VowpalWabbitExampleBuilder
+    public ref class VowpalWabbitExampleBuilder sealed
     {
     private:
-        initonly VowpalWabbit^ m_vw;
+        IVowpalWabbitExamplePool^ m_vw;
 
         /// <summary>
         /// The produced CLR example data structure.
@@ -102,7 +101,7 @@ namespace VW
         /// Initializes a new <see cref="VowpalWabbitExampleBuilder"/> instance.
         /// </summary>
         /// <param name="vw">The parent vowpal wabbit instance.</param>
-        VowpalWabbitExampleBuilder(VowpalWabbit^ vw);
+        VowpalWabbitExampleBuilder(IVowpalWabbitExamplePool^ vw);
 
         /// <summary>
         /// Cleanup.
@@ -118,8 +117,7 @@ namespace VW
         /// <summary>
         /// Sets the label for the resulting example.
         /// </summary>
-        /// <param name="value">The label value to be parsed.</param>
-        void ParseLabel(String^ value);
+        void ApplyLabel(ILabel^ label);
 
         /// <summary>
         /// Creates and adds a new namespace to this example.

@@ -22,20 +22,35 @@ using namespace System::Text;
 
 namespace VW
 {
+    static VowpalWabbitBase::VowpalWabbitBase()
+    {
+        // make sure zlib.dll is loaded before anybody changes the current directory and we can't load anymore...
+        auto str = System::IO::Path::Combine(System::IO::Path::GetDirectoryName(VowpalWabbitBase::typeid->Assembly->Location), "zlib.dll");
+        wstring path = msclr::interop::marshal_as<std::wstring>(str);
+        LoadLibrary(path.c_str());
+    }
+
     VowpalWabbitBase::VowpalWabbitBase(VowpalWabbitSettings^ settings)
         : m_examples(nullptr), m_vw(nullptr), m_model(nullptr), m_settings(settings != nullptr ? settings : gcnew VowpalWabbitSettings), m_instanceCount(0)
     {
-        m_examples = gcnew Stack<VowpalWabbitExample^>;
+        if (m_settings->EnableThreadSafeExamplePooling)
+          m_examples = Bag::CreateLockFree<VowpalWabbitExample^>();
+        else
+          m_examples = Bag::Create<VowpalWabbitExample^>(m_settings->MaxExamples);
 
         try
         {
             try
             {
-                auto string = msclr::interop::marshal_as<std::string>(settings->Arguments);
+                std::string string;
+                if (settings->Arguments != nullptr)
+                    string = msclr::interop::marshal_as<std::string>(settings->Arguments);
 
                 if (settings->Model != nullptr)
                 {
                     m_model = settings->Model;
+                    if (!settings->Verbose && !settings->Arguments->Contains("--quiet") && !m_model->Arguments->CommandLine->Contains("--quiet"))
+                        string.append(" --quiet");
                     m_vw = VW::seed_vw_model(m_model->m_vw, string);
                     m_model->IncrementReference();
                 }
@@ -43,12 +58,17 @@ namespace VW
                 {
                     if (settings->ModelStream == nullptr)
                     {
+                        if (!settings->Verbose && !settings->Arguments->Contains("--quiet"))
+                            string.append(" --quiet");
+
                         m_vw = VW::initialize(string);
                     }
                     else
                     {
                         clr_io_buf model(settings->ModelStream);
-                        InitializeFromModel(string, model);
+                        if (!settings->Arguments->Contains("--no_stdin"))
+                          string += " --no_stdin";
+                        m_vw = VW::initialize(string, &model);
                         settings->ModelStream->Close();
                     }
                 }
@@ -61,39 +81,6 @@ namespace VW
             }
         }
         CATCHRETHROW
-    }
-
-    void VowpalWabbitBase::InitializeFromModel(string args, io_buf& model)
-    {
-        char** argv = nullptr;
-        int argc = 0;
-
-        args.append(" --no_stdin");
-        argv = VW::get_argv_from_string(args, argc);
-
-        m_vw = &parse_args(argc, argv);
-
-        try
-        {
-            parse_modules(*m_vw, model);
-            parse_sources(*m_vw, model);
-            initialize_parser_datastructures(*m_vw);
-        }
-        catch (...)
-        {
-            VW::finish(*m_vw);
-            m_vw = nullptr;
-            throw;
-        }
-        finally
-        {
-            if (argv != nullptr)
-            {
-                for (int i = 0; i < argc; i++)
-                    free(argv[i]);
-                free(argv);
-            }
-        }
     }
 
     VowpalWabbitBase::~VowpalWabbitBase()
@@ -124,42 +111,34 @@ namespace VW
         }
     }
 
+    void VowpalWabbitBase::DisposeExample(VowpalWabbitExample^ ex)
+    {
+        VW::dealloc_example(m_vw->p->lp.delete_label, *ex->m_example);
+        ::free_it(ex->m_example);
+
+        // cleanup pointers in example chain
+        auto inner = ex;
+        while ((inner = inner->InnerExample) != nullptr)
+        {
+          inner->m_owner = nullptr;
+          inner->m_example = nullptr;
+        }
+
+        ex->m_example = nullptr;
+
+        // avoid that this example is returned again
+        ex->m_owner = nullptr;
+    }
+
     void VowpalWabbitBase::InternalDispose()
     {
         if (m_vw != nullptr)
         {
             // de-allocate example pools that are managed for each even shared instances
-            auto multilabel_prediction = m_vw->multilabel_prediction;
-            auto delete_label = m_vw->p->lp.delete_label;
-
             if (m_examples != nullptr)
             {
-                for each (auto ex in m_examples)
-                {
-                    if (multilabel_prediction)
-                    {
-                        VW::dealloc_example(delete_label, *ex->m_example, MULTILABEL::multilabel.delete_label);
-                    }
-                    else
-                    {
-                        VW::dealloc_example(delete_label, *ex->m_example);
-                    }
-
-                    ::free_it(ex->m_example);
-
-                    // cleanup pointers in example chain
-                    auto inner = ex;
-                    while ((inner = inner->InnerExample) != nullptr)
-                    {
-                        inner->m_owner = nullptr;
-                        inner->m_example = nullptr;
-                    }
-
-                    ex->m_example = nullptr;
-
-                    // avoid that this example is returned again
-                    ex->m_owner = nullptr;
-                }
+                for each (auto ex in m_examples->RemoveAll())
+                    DisposeExample(ex);
 
                 m_examples = nullptr;
             }
@@ -204,75 +183,6 @@ namespace VW
         return m_arguments;
     }
 
-    VowpalWabbitExample^ VowpalWabbitBase::GetOrCreateNativeExample()
-    {
-        if (m_examples->Count == 0)
-        {
-            try
-            {
-                auto ex = VW::alloc_examples(0, 1);
-                m_vw->p->lp.default_label(&ex->l);
-                return gcnew VowpalWabbitExample(this, ex);
-            }
-            CATCHRETHROW
-        }
-
-        auto ex = m_examples->Pop();
-
-        try
-        {
-            VW::empty_example(*m_vw, *ex->m_example);
-            m_vw->p->lp.default_label(&ex->m_example->l);
-
-            return ex;
-        }
-        CATCHRETHROW
-    }
-
-    VowpalWabbitExample^ VowpalWabbitBase::GetOrCreateEmptyExample()
-    {
-        VowpalWabbitExample^ ex = nullptr;
-
-        try
-        {
-            ex = GetOrCreateNativeExample();
-
-            char empty = '\0';
-            VW::read_line(*m_vw, ex->m_example, &empty);
-
-            VW::parse_atomic_example(*m_vw, ex->m_example, false);
-            VW::setup_example(*m_vw, ex->m_example);
-
-            return ex;
-        }
-        catch (...)
-        {
-            delete ex;
-            throw;
-        }
-    }
-
-    void VowpalWabbitBase::ReturnExampleToPool(VowpalWabbitExample^ ex)
-    {
-#if _DEBUG
-        if (m_vw == nullptr)
-            throw gcnew ObjectDisposedException("VowpalWabbitExample was not properly disposed as the owner is already disposed");
-
-        if (ex == nullptr)
-            throw gcnew ArgumentNullException("ex");
-#endif
-
-        // make sure we're not a ring based example
-        assert(!VW::is_ring_example(*m_vw, ex->m_example));
-
-        if (m_examples != nullptr)
-            m_examples->Push(ex);
-#if _DEBUG
-        else // this should not happen as m_vw is already set to null
-            throw gcnew ObjectDisposedException("VowpalWabbitExample was disposed after the owner is disposed");
-#endif
-    }
-
     void VowpalWabbitBase::Reload([System::Runtime::InteropServices::Optional] String^ args)
     {
         if (m_settings->ParallelOptions != nullptr)
@@ -302,7 +212,7 @@ namespace VW
             // reload from model
             // seek to beginning
             mem_buf.reset_file(0);
-            InitializeFromModel(stringArgs.c_str(), mem_buf);
+            m_vw = VW::initialize(stringArgs.c_str(), &mem_buf);
         }
         CATCHRETHROW
     }
@@ -322,5 +232,52 @@ namespace VW
     void VowpalWabbitBase::ID::set(String^ value)
     {
         m_vw->id = msclr::interop::marshal_as<std::string>(value);
+    }
+
+    void VowpalWabbitBase::SaveModel()
+    {
+      string name = m_vw->final_regressor_name;
+      if (name.empty())
+      {
+        return;
+      }
+
+      // this results in extra marshaling but should be fine here
+      this->SaveModel(gcnew String(name.c_str()));
+    }
+
+    void VowpalWabbitBase::SaveModel(String^ filename)
+    {
+      if (String::IsNullOrEmpty(filename))
+        throw gcnew ArgumentException("Filename must not be null or empty");
+
+      String^ directoryName = System::IO::Path::GetDirectoryName(filename);
+
+      if (!String::IsNullOrEmpty(directoryName))
+      {
+        System::IO::Directory::CreateDirectory(directoryName);
+      }
+
+      auto name = msclr::interop::marshal_as<std::string>(filename);
+
+      try
+      {
+        VW::save_predictor(*m_vw, name);
+      }
+      CATCHRETHROW
+    }
+
+    void VowpalWabbitBase::SaveModel(Stream^ stream)
+    {
+      if (stream == nullptr)
+        throw gcnew ArgumentException("stream");
+
+      try
+      {
+        VW::clr_io_buf buf(stream);
+
+        VW::save_predictor(*m_vw, buf);
+      }
+      CATCHRETHROW
     }
 }

@@ -11,7 +11,6 @@ using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Text;
-using VW.Interfaces;
 using VW.Labels;
 using VW.Serializer;
 
@@ -84,8 +83,8 @@ namespace VW
             IReadOnlyCollection<TActionDependentFeature> actionDependentFeatures,
             int? index = null,
             ILabel label = null,
-            VowpalWabbitSerializer<TExample> serializer = null,
-            VowpalWabbitSerializer<TActionDependentFeature> actionDependentFeatureSerializer = null,
+            IVowpalWabbitSerializer<TExample> serializer = null,
+            IVowpalWabbitSerializer<TActionDependentFeature> actionDependentFeatureSerializer = null,
             Dictionary<string, string> dictionary = null,
             Dictionary<object, string> fastDictionary = null)
         {
@@ -94,7 +93,7 @@ namespace VW
 
             if (serializer == null)
             {
-                serializer = VowpalWabbitSerializerFactory.CreateSerializer<TExample>(new VowpalWabbitSettings(enableStringExampleGeneration: true)).Create(vw);
+                serializer = VowpalWabbitSerializerFactory.CreateSerializer<TExample>(new VowpalWabbitSettings { EnableStringExampleGeneration = true }).Create(vw);
             }
             else if (!serializer.EnableStringExampleGeneration)
             {
@@ -103,7 +102,7 @@ namespace VW
 
             if (actionDependentFeatureSerializer == null)
             {
-                actionDependentFeatureSerializer = VowpalWabbitSerializerFactory.CreateSerializer<TActionDependentFeature>(new VowpalWabbitSettings(enableStringExampleGeneration: true)).Create(vw);
+                actionDependentFeatureSerializer = VowpalWabbitSerializerFactory.CreateSerializer<TActionDependentFeature>(new VowpalWabbitSettings { EnableStringExampleGeneration = true }).Create(vw);
             }
             else if (!actionDependentFeatureSerializer.EnableStringExampleGeneration)
             {
@@ -112,7 +111,7 @@ namespace VW
 
             var stringExample = new StringBuilder();
 
-            var sharedExample = serializer.SerializeToString(example, SharedLabel.Instance, dictionary, fastDictionary);
+            var sharedExample = serializer.SerializeToString(example, SharedLabel.Instance, null, dictionary, fastDictionary);
 
             // check if we have shared features
             if (!string.IsNullOrWhiteSpace(sharedExample))
@@ -124,7 +123,7 @@ namespace VW
             foreach (var actionDependentFeature in actionDependentFeatures)
             {
                 var adfExample = actionDependentFeatureSerializer.SerializeToString(actionDependentFeature,
-                    index != null && i == index ? label : null, dictionary, fastDictionary);
+                    index != null && i == index ? label : null, null, dictionary, fastDictionary);
 
                 if (!string.IsNullOrWhiteSpace(adfExample))
                 {
@@ -164,8 +163,8 @@ namespace VW
         /// <param name="label">The optional label to be used for learning or evaluation.</param>
         public static void Execute<TExample, TActionDependentFeature>(
             VowpalWabbit vw,
-            VowpalWabbitSerializer<TExample> serializer,
-            VowpalWabbitSerializer<TActionDependentFeature> actionDependentFeatureSerializer,
+            VowpalWabbitSingleExampleSerializer<TExample> serializer,
+            VowpalWabbitSingleExampleSerializer<TActionDependentFeature> actionDependentFeatureSerializer,
             TExample example,
             IReadOnlyCollection<TActionDependentFeature> actionDependentFeatures,
             LearnOrPredictAction<TActionDependentFeature> predictOrLearn,
@@ -173,7 +172,6 @@ namespace VW
             ILabel label = null)
         {
             Contract.Requires(vw != null);
-            Contract.Requires(serializer != null);
             Contract.Requires(actionDependentFeatureSerializer != null);
             Contract.Requires(example != null);
             Contract.Requires(actionDependentFeatures != null);
@@ -183,18 +181,23 @@ namespace VW
             var validActionDependentFeatures = new List<ActionDependentFeature<TActionDependentFeature>>(actionDependentFeatures.Count + 1);
             var emptyActionDependentFeatures = new List<ActionDependentFeature<TActionDependentFeature>>(actionDependentFeatures.Count + 1);
 
+            VowpalWabbitExample emptyExample = null;
+
             try
             {
                 // contains prediction results
-                var sharedExample = serializer.Serialize(example, SharedLabel.Instance);
-                // check if we have shared features
-                if (sharedExample != null)
+                if (serializer != null)
                 {
-                    examples.Add(sharedExample);
-
-                    if (!sharedExample.IsNewLine)
+                    var sharedExample = serializer.Serialize(example, SharedLabel.Instance);
+                    // check if we have shared features
+                    if (sharedExample != null)
                     {
-                        validExamples.Add(sharedExample);
+                        examples.Add(sharedExample);
+
+                        if (!sharedExample.IsNewLine)
+                        {
+                            validExamples.Add(sharedExample);
+                        }
                     }
                 }
 
@@ -221,27 +224,26 @@ namespace VW
                 }
 
                 if (validActionDependentFeatures.Count == 0)
-                {
                     return;
-                }
 
                 // signal we're finished using an empty example
-                var empty = vw.GetOrCreateEmptyExample();
-                examples.Add(empty);
-                validExamples.Add(empty);
+                emptyExample = vw.GetOrCreateNativeExample();
+                validExamples.Add(emptyExample);
+                emptyExample.MakeEmpty(vw);
 
                 predictOrLearn(validExamples, validActionDependentFeatures, emptyActionDependentFeatures);
             }
             finally
             {
+                if (emptyExample != null)
+                    emptyExample.Dispose();
+
                 // dispose examples
                 // Note: must not dispose examples before final example
                 // as the learning algorithm (such as cbf) keeps a reference
                 // to the example
                 foreach (var e in examples)
-                {
                     e.Dispose();
-                }
             }
         }
 
@@ -250,15 +252,14 @@ namespace VW
         /// </summary>
         public static void Learn<TExample, TActionDependentFeature>(
             VowpalWabbit vw,
-            VowpalWabbitSerializer<TExample> serializer,
-            VowpalWabbitSerializer<TActionDependentFeature> actionDependentFeatureSerializer,
+            VowpalWabbitSingleExampleSerializer<TExample> serializer,
+            VowpalWabbitSingleExampleSerializer<TActionDependentFeature> actionDependentFeatureSerializer,
             TExample example,
             IReadOnlyCollection<TActionDependentFeature> actionDependentFeatures,
             int index,
             ILabel label)
         {
             Contract.Requires(vw != null);
-            Contract.Requires(serializer != null);
             Contract.Requires(actionDependentFeatureSerializer != null);
             Contract.Requires(example != null);
             Contract.Requires(actionDependentFeatures != null);
@@ -297,15 +298,14 @@ namespace VW
         /// <returns>An ranked subset of predicted actions.</returns>
         public static ActionDependentFeature<TActionDependentFeature>[] LearnAndPredict<TExample, TActionDependentFeature>(
             VowpalWabbit vw,
-            VowpalWabbitSerializer<TExample> serializer,
-            VowpalWabbitSerializer<TActionDependentFeature> actionDependentFeatureSerializer,
+            VowpalWabbitSingleExampleSerializer<TExample> serializer,
+            VowpalWabbitSingleExampleSerializer<TActionDependentFeature> actionDependentFeatureSerializer,
             TExample example,
             IReadOnlyCollection<TActionDependentFeature> actionDependentFeatures,
             int index,
             ILabel label)
         {
             Contract.Requires(vw != null);
-            Contract.Requires(serializer != null);
             Contract.Requires(actionDependentFeatureSerializer != null);
             Contract.Requires(example != null);
             Contract.Requires(actionDependentFeatures != null);
@@ -351,15 +351,14 @@ namespace VW
         /// <returns>An ranked subset of predicted actions.</returns>
         public static ActionDependentFeature<TActionDependentFeature>[] Predict<TExample, TActionDependentFeature>(
             VowpalWabbit vw,
-            VowpalWabbitSerializer<TExample> serializer,
-            VowpalWabbitSerializer<TActionDependentFeature> actionDependentFeatureSerializer,
+            VowpalWabbitSingleExampleSerializer<TExample> serializer,
+            VowpalWabbitSingleExampleSerializer<TActionDependentFeature> actionDependentFeatureSerializer,
             TExample example,
             IReadOnlyCollection<TActionDependentFeature> actionDependentFeatures,
             int? index = null,
             ILabel label = null)
         {
             Contract.Requires(vw != null);
-            Contract.Requires(serializer != null);
             Contract.Requires(actionDependentFeatureSerializer != null);
             Contract.Requires(example != null);
             Contract.Requires(actionDependentFeatures != null);
@@ -412,26 +411,47 @@ namespace VW
                 return null;
             }
 
-            var values = firstExample.GetPrediction(vw, VowpalWabbitPredictionType.Multilabel);
-
-            if (values.Length != validActionDependentFeatures.Count)
-            {
-                throw new InvalidOperationException("Number of predictions returned unequal number of examples fed");
-            }
-
-            var result = new ActionDependentFeature<TActionDependentFeature>[validActionDependentFeatures.Count + emptyActionDependentFeatures.Count];
-
+            ActionDependentFeature<TActionDependentFeature>[] result;
             int i = 0;
-            foreach (var index in values)
+
+            var values = firstExample.GetPrediction(vw, VowpalWabbitPredictionType.Dynamic);
+            var actionScores = values as ActionScore[];
+            if (actionScores != null)
             {
-                result[i++] = validActionDependentFeatures[index];
+                if (actionScores.Length != validActionDependentFeatures.Count)
+                    throw new InvalidOperationException("Number of predictions returned unequal number of examples fed");
+
+                result = new ActionDependentFeature<TActionDependentFeature>[validActionDependentFeatures.Count + emptyActionDependentFeatures.Count];
+
+                foreach (var index in actionScores)
+                {
+                    result[i] = validActionDependentFeatures[(int)index.Action];
+                    result[i].Probability = index.Score;
+                    i++;
+                }
+            }
+            else
+            {
+                var multilabel = values as int[];
+                if (multilabel != null)
+                {
+                    if (multilabel.Length != validActionDependentFeatures.Count)
+                        throw new InvalidOperationException("Number of predictions returned unequal number of examples fed");
+
+                    result = new ActionDependentFeature<TActionDependentFeature>[validActionDependentFeatures.Count + emptyActionDependentFeatures.Count];
+
+                    foreach (var index in multilabel)
+                        result[i++] = validActionDependentFeatures[index];
+
+                    result[0].Probability = 1f;
+                }
+                else
+                    throw new NotSupportedException("Unsupported return type: " + values.GetType());
             }
 
             // append invalid ones at the end
             foreach (var f in emptyActionDependentFeatures)
-            {
                 result[i++] = f;
-            }
 
             return result;
         }

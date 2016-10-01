@@ -13,7 +13,6 @@ using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using VW.Interfaces;
 using VW.Labels;
 using VW.Serializer;
 
@@ -34,9 +33,9 @@ namespace VW
 
         private List<VowpalWabbitSettings> settings;
 
-        private VowpalWabbitSerializer<TExample>[] serializers;
+        private VowpalWabbitSingleExampleSerializer<TExample>[] serializers;
 
-        private VowpalWabbitSerializer<TActionDependentFeature>[] actionDependentFeatureSerializers;
+        private VowpalWabbitSingleExampleSerializer<TActionDependentFeature>[] actionDependentFeatureSerializers;
 
         /// <summary>
         /// Initializes a new instance.
@@ -57,9 +56,13 @@ namespace VW
             if (diffs.Count > 0)
                 throw new ArgumentException("Feature settings are not compatible for sweeping: " + string.Join(",", diffs));
 
-            this.serializers = this.vws.Select(vw => VowpalWabbitSerializerFactory.CreateSerializer<TExample>(vw.Settings).Create(vw)).ToArray();
+            this.serializers = this.vws.Select(vw =>
+                (VowpalWabbitSingleExampleSerializer<TExample>)VowpalWabbitSerializerFactory.CreateSerializer<TExample>(vw.Settings).Create(vw))
+                .ToArray();
 
-            this.actionDependentFeatureSerializers = this.vws.Select(vw => VowpalWabbitSerializerFactory.CreateSerializer<TActionDependentFeature>(vw.Settings).Create(vw)).ToArray();
+            this.actionDependentFeatureSerializers = this.vws.Select(vw =>
+                (VowpalWabbitSingleExampleSerializer<TActionDependentFeature>)VowpalWabbitSerializerFactory.CreateSerializer<TActionDependentFeature>(vw.Settings).Create(vw))
+                .ToArray();
         }
 
         /// <summary>
@@ -138,6 +141,48 @@ namespace VW
 
             return result;
         }
+
+        /// <summary>
+        /// Save all models with the given prfix.
+        /// </summary>
+        /// <param name="modelPrefix"></param>
+        /// <returns></returns>
+	    public List<string> SaveModels(string modelPrefix)
+        {
+            return this.vws.Select((vw, i) =>
+            {
+                var modelName = modelPrefix + "-" + i;
+                vw.SaveModel(modelName);
+                return modelName;
+            })
+            .ToList();
+        } 
+
+
+        /// <summary>
+        /// Reload all models.
+        /// </summary>
+	    public void Reload()
+        {
+            foreach (var vw in this.vws)
+            {
+                vw.Reload();
+            }
+        } 
+
+
+        /// <summary>
+        /// Executes the given action on each VW instance.
+        /// </summary>
+        /// <param name="action">The action to execute.</param>
+	    public void Execute(Action<VowpalWabbit, VowpalWabbitSingleExampleSerializer<TExample>, VowpalWabbitSingleExampleSerializer<TActionDependentFeature>, int> action)
+        {
+            Parallel.For(
+                0, this.vws.Length,
+                new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 },
+                i => action(this.vws[i], this.serializers[i], this.actionDependentFeatureSerializers[i], i));
+        } 
+
 
         /// <summary>
         /// Dispose resources.

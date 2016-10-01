@@ -90,11 +90,28 @@ namespace cs_unittest
             using (var vwm = new VowpalWabbitModel("-i model.1"))
             {
                 Assert.AreEqual("def", vwm.ID);
-                using (var vw = new VowpalWabbit(new VowpalWabbitSettings(model: vwm)))
+                using (var vw = new VowpalWabbit(new VowpalWabbitSettings { Model = vwm }))
                 {
                     Assert.AreEqual("def", vw.ID);
                     Assert.AreEqual(vwm.ID, vw.ID);
                 }
+            }
+        }
+
+        [TestMethod]
+        [TestCategory("Model Loading")]
+        public void TestEmptyID()
+        {
+            using (var vw = new VowpalWabbit("-l 1"))
+            {
+                Assert.AreEqual(string.Empty, vw.ID);
+
+                vw.SaveModel("model");
+            }
+
+            using (var vw = new VowpalWabbit("-f model"))
+            {
+                Assert.AreEqual(string.Empty, vw.ID);
             }
         }
 
@@ -161,7 +178,7 @@ namespace cs_unittest
                 try
                 {
                     using (var modelStream = new MemoryStream(corruptBytes))
-                    using (var vw = new VowpalWabbitModel(new VowpalWabbitSettings("--quiet -t", modelStream)))
+                    using (var vw = new VowpalWabbitModel(new VowpalWabbitSettings("--quiet -t") { ModelStream = modelStream }))
                     {
                         // chances of reaching this point after reading a corrupt model are low
                         Assert.IsTrue(false);

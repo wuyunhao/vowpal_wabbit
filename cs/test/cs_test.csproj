@@ -164,8 +164,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AttributesSample.cs" />
-    <Compile Include="ExploreClock.cs" />
-    <Compile Include="ExploreOnlySample.cs" />
     <Compile Include="NIPS2015Tutorial.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -176,13 +174,17 @@
       <Project>{e4e962ae-7056-4eb0-a8c5-8dc824a4b068}</Project>
       <Name>cs</Name>
     </ProjectReference>
+    <ProjectReference Include="..\cs_json\cs_json.csproj">
+      <Project>{9e27fa94-ab34-4736-8427-fb7a2ba90d52}</Project>
+      <Name>cs_json</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\cs_parallel\cs_parallel.csproj">
+      <Project>{08636f79-5577-4af2-8eed-ec8a5bc14ac4}</Project>
+      <Name>cs_parallel</Name>
+    </ProjectReference>
     <ProjectReference Include="..\unittest\cs_unittest.csproj">
       <Project>{007b7de0-1d9b-498d-acfc-e9d33058f22e}</Project>
       <Name>cs_unittest</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\explore\clr\explore_clr.vcxproj">
-      <Project>{8400da16-1f46-4a31-a126-bbe16f62bfd7}</Project>
-      <Name>vw_explore_clr_wrapper</Name>
     </ProjectReference>
     <ProjectReference Include="..\cli\vw_clr.vcxproj">
       <Project>{85e55ae0-3784-4968-9271-c81af560e1c1}</Project>

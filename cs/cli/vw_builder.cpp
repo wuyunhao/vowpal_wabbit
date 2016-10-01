@@ -6,11 +6,10 @@ license as described in the file LICENSE.
 
 #include "vw_builder.h"
 #include "parser.h"
-// #include "primitives.h"
 
 namespace VW
 {
-    VowpalWabbitExampleBuilder::VowpalWabbitExampleBuilder(VowpalWabbit^ vw) :
+    VowpalWabbitExampleBuilder::VowpalWabbitExampleBuilder(IVowpalWabbitExamplePool^ vw) :
         m_vw(vw), m_example(nullptr)
     {
         if (vw == nullptr)
@@ -43,8 +42,8 @@ namespace VW
         try
         {
             // finalize example
-            VW::parse_atomic_example(*m_vw->m_vw, m_example->m_example, false);
-            VW::setup_example(*m_vw->m_vw, m_example->m_example);
+            VW::parse_atomic_example(*m_vw->Native->m_vw, m_example->m_example, false);
+            VW::setup_example(*m_vw->Native->m_vw, m_example->m_example);
         }
         CATCHRETHROW
 
@@ -55,22 +54,12 @@ namespace VW
         return ret;
     }
 
-    void VowpalWabbitExampleBuilder::ParseLabel(String^ value)
+    void VowpalWabbitExampleBuilder::ApplyLabel(ILabel^ label)
     {
-        if (value == nullptr)
+        if (label == nullptr)
             return;
 
-        auto bytes = System::Text::Encoding::UTF8->GetBytes(value);
-        auto valueHandle = GCHandle::Alloc(bytes, GCHandleType::Pinned);
-
-        try
-        {
-            VW::parse_example_label(*m_vw->m_vw, *m_example->m_example, reinterpret_cast<char*>(valueHandle.AddrOfPinnedObject().ToPointer()));
-        }
-        CATCHRETHROW
-        finally
-        { valueHandle.Free();
-        }
+        label->UpdateExample(m_vw->Native->m_vw, m_example->m_example);
     }
 
     VowpalWabbitNamespaceBuilder^ VowpalWabbitExampleBuilder::AddNamespace(Char featureGroup)
@@ -81,14 +70,14 @@ namespace VW
     VowpalWabbitNamespaceBuilder^ VowpalWabbitExampleBuilder::AddNamespace(Byte featureGroup)
     {
         uint32_t index = featureGroup;
-        auto ex = m_example->m_example;
+        example* ex = m_example->m_example;
 
-        return gcnew VowpalWabbitNamespaceBuilder(ex->sum_feat_sq + index, ex->atomics + index, featureGroup, m_example->m_example);
+        return gcnew VowpalWabbitNamespaceBuilder(ex->feature_space + index, featureGroup, m_example->m_example);
     }
 
-    VowpalWabbitNamespaceBuilder::VowpalWabbitNamespaceBuilder(float* sum_feat_sq, v_array<feature>* atomic,
+    VowpalWabbitNamespaceBuilder::VowpalWabbitNamespaceBuilder(features* features,
         unsigned char index, example* example)
-        : m_sum_feat_sq(sum_feat_sq), m_atomic(atomic), m_index(index), m_example(example)
+        : m_features(features), m_index(index), m_example(example)
     {
     }
 
@@ -99,43 +88,52 @@ namespace VW
 
     VowpalWabbitNamespaceBuilder::!VowpalWabbitNamespaceBuilder()
     {
-        if (m_atomic->size() > 0)
+        if (m_features->size() > 0)
         {
             unsigned char temp = m_index;
+
+            // avoid duplicate insertion
+            // can't check at the beginning, because multiple builders can be open
+            // at the same time
+            for (unsigned char ns : m_example->indices)
+                if (ns == temp)
+                    return;
+
             m_example->indices.push_back(temp);
         }
     }
 
-    void VowpalWabbitNamespaceBuilder::AddFeaturesUnchecked(uint32_t weight_index_base, float* begin, float* end)
+    void VowpalWabbitNamespaceBuilder::AddFeaturesUnchecked(uint64_t weight_index_base, float* begin, float* end)
     {
-        // TODO: remove m_sum_feat_sq
-        // *m_sum_feat_sq += sum_of_squares(begin, end);
-
         for (; begin != end; begin++)
         {
             float x = *begin;
             if (x != 0)
             {
-                *m_sum_feat_sq += x * x;
-                m_atomic->push_back_unchecked({ x, weight_index_base });
+                m_features->values.push_back_unchecked(x);
+                m_features->indicies.push_back_unchecked(weight_index_base);
             }
             weight_index_base++;
         }
-
     }
 
-    void VowpalWabbitNamespaceBuilder::AddFeature(uint32_t weight_index, float x)
+    void VowpalWabbitNamespaceBuilder::AddFeature(uint64_t weight_index, float x)
     {
         // filter out 0-values
         if (x == 0)
             return;
 
-        *m_sum_feat_sq += x * x;
-        m_atomic->push_back({ x, weight_index });
+        m_features->push_back(x, weight_index);
     }
 
     void VowpalWabbitNamespaceBuilder::PreAllocate(int size)
     {
-        m_atomic->resize((m_atomic->end - m_atomic->begin) + size);
+        m_features->values.resize(m_features->values.end() - m_features->values.begin() + size);
+        m_features->indicies.resize(m_features->indicies.end() - m_features->indicies.begin() + size);
+    }
+
+    size_t VowpalWabbitNamespaceBuilder::FeatureCount::get()
+    {
+        return m_features->size();
     }
 }

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using VW;
-using VW.Interfaces;
+using VW.Labels;
 
 namespace cs_unittest
 {
@@ -89,6 +89,26 @@ namespace cs_unittest
             Assert.AreEqual(2, factory2.Children.Count);
 
             Assert.IsTrue(factory2.Disposed);
+        }
+
+        [TestMethod]
+        [TestCategory("ObjectPool")]
+        public void ThreadPoolNull()
+        {
+            using (var pool = new VowpalWabbitThreadedPrediction())
+            {
+                using (var vw = pool.GetOrCreate())
+                {
+                    Assert.IsNull(vw.Value);
+                }
+
+                pool.UpdateModel(new VowpalWabbitModel(string.Empty));
+
+                using (var vw = pool.GetOrCreate())
+                {
+                    Assert.IsNotNull(vw.Value);
+                }
+            }
         }
 
         [TestMethod]

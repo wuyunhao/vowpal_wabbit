@@ -1,11 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿// --------------------------------------------------------------------------------------------------------------------
+// <copyright file="StringProcessing.cs">
+//   Copyright (c) by respective owners including Yahoo!, Microsoft, and
+//   individual contributors. All rights reserved.  Released under a BSD
+//   license as described in the file LICENSE.
+// </copyright>
+// --------------------------------------------------------------------------------------------------------------------
 
 namespace VW.Serializer
 {
+    /// <summary>
+    /// Options for string pre-processing before feeding to VW native.
+    /// </summary>
     public enum StringProcessing
     {
         /// <summary>
@@ -16,6 +21,11 @@ namespace VW.Serializer
         /// <summary>
         /// Strings are split on space, producing individual features.
         /// </summary>
-        Split
+        Split,
+
+        /// <summary>
+        /// Spaces are replaced with underscores and the property name is used as a prefix.
+        /// </summary>
+        EscapeAndIncludeName
     }
 }

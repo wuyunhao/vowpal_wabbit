@@ -12,6 +12,7 @@ license as described in the file LICENSE.
 
 using namespace std;
 using namespace System;
+using namespace System::Text;
 using namespace System::Collections::Generic;
 
 namespace VW
@@ -27,6 +28,9 @@ namespace VW
         const bool m_testonly;
         const int m_passes;
         List<String^>^ m_regressors;
+        String^ m_commandLine;
+
+        int m_numberOfActions;
 
     internal:
         VowpalWabbitArguments(vw* vw) :
@@ -41,9 +45,18 @@ namespace VW
                 m_regressors = gcnew List<String^>;
 
                 vector<string> regs = vm["initial_regressor"].as< vector<string> >();
-                for (auto iter = regs.begin(); iter != regs.end(); iter++)
-                    m_regressors->Add(gcnew String(iter->c_str()));
+                for (auto& r : regs)
+                    m_regressors->Add(gcnew String(r.c_str()));
             }
+
+            StringBuilder^ sb = gcnew StringBuilder();
+            for (auto& s : vw->args)
+                sb->AppendFormat("{0} ", gcnew String(s.c_str()));
+
+            m_commandLine = sb->ToString()->TrimEnd();
+
+            if (vw->vm.count("cb"))
+                m_numberOfActions = (int)vw->vm["cb"].as<size_t>();
         }
 
     public:
@@ -99,6 +112,22 @@ namespace VW
             List<String^>^ get()
             {
                 return m_regressors;
+            }
+        }
+
+        property String^ CommandLine
+        {
+            String^ get()
+            {
+                return m_commandLine;
+            }
+        }
+
+        property int ContextualBanditNumberOfActions
+        {
+            int get()
+            {
+                return m_numberOfActions;
             }
         }
     };
